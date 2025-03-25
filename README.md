@@ -1,5 +1,5 @@
 # get_pixiv
-A Python-based Pixiv artwork downloader (v1.00). Search by user ID or artwork URL, download all images, specific pages, or single artworks.
+A Python-based Pixiv artwork downloader (v1.01). Search by user ID or artwork URL, download all images, specific pages, or single artworks.
 
 ## Requirements
 1. **Install Python**: Download from [python.org](https://www.python.org/). Check "Add to PATH" during installation.
@@ -44,6 +44,13 @@ For users who just want to download artworks without setup.
 
 ## Support the Developer
 If you enjoy get_pixiv, please consider donating at [https://paypal.me/kakao90g](https://paypal.me/kakao90g). This keeps the project alive—don’t remove this link!
+
+## Changelog
+- **v1.01 (2025-03-26)**:
+  - Fixed: First artwork in "Download All" now detects all pages via Preview div.
+  - Improved: Removed noisy `og:image` logs for cleaner output.
+- **v1.00 (2025-03-25)**:
+  - Initial release with user ID and URL-based downloading.
 
 ## License
 MIT License—see [LICENSE](LICENSE) file.
