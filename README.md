@@ -8,7 +8,7 @@ A Python-based Pixiv artwork downloader (v1.01). Search by user ID or artwork UR
 ## Option 1: Running from Source (GitHub Open-Source)
 For developers or those who want to run the Python script directly.
 
-3. **Create a Virtual Environment**:
+1. **Create a Virtual Environment**:
    - Open a terminal in the project folder.
    - Run:
      ```
@@ -18,13 +18,13 @@ For developers or those who want to run the Python script directly.
      - Windows: `venv\Scripts\activate`
      - macOS/Linux: `source venv/bin/activate`
 
-4. **Install Dependencies**:
+2. **Install Dependencies**:
    - Run:
      ```
      pip install -r requirements.txt
      ```
 
-5. **Run the App**:
+3. **Run the App**:
    - Run:
      ```
      python get_pixiv.py
@@ -33,8 +33,12 @@ For developers or those who want to run the Python script directly.
 ## Option 2: Running the EXE (End-User)
 For users who just want to download artworks without setup.
 
-3. **Run the App**:
+1. **Run the App**:
    - Double-click `get_pixiv.exe` (download from [Releases](https://github.com/kakao90g/get_pixiv/releases)).
+   - **Note: Microsoft Defender SmartScreen**: If you see a warning:
+     1. Click "More info".
+     2. Click "Run anyway".
+     This is a new app—safe, open-source, and submitted for Microsoft review.
 
 ## Usage
 - **Cookies**: Paste your Pixiv cookies into "Cookie String" and click "Save Cookies".
@@ -48,7 +52,7 @@ If you enjoy get_pixiv, please consider donating at [https://paypal.me/kakao90g]
 ## Changelog
 - **v1.01 (2025-03-26)**:
   - Fixed: First artwork in "Download All" now detects all pages via Preview div.
-  - Improved: Removed noisy `og:image` logs for cleaner output.
+  - Improved: Removed noisy `og:image` logs.
 - **v1.00 (2025-03-25)**:
   - Initial release with user ID and URL-based downloading.
 
