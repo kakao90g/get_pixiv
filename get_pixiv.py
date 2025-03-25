@@ -23,7 +23,7 @@ from requests.adapters import HTTPAdapter
 import threading
 
 # Version constant
-VERSION = "1.00"
+VERSION = "1.01"
 
 # Suppress WebDriver Manager logs
 os.environ['WDM_LOG'] = '0'
@@ -166,7 +166,7 @@ class PixivDownloaderApp:
         logger.addHandler(self.log_handler)
 
     def show_about(self):
-        messagebox.showinfo("About", "get pixiv v1.00\nA Pixiv artwork downloader.\nLicense: MIT\n© 2025 @kakao90g\nSupport this project: https://paypal.me/kakao90g")
+        messagebox.showinfo("About", "get pixiv v1.01\nA Pixiv artwork downloader.\nLicense: MIT\n© 2025 @kakao90g\nSupport this project: https://paypal.me/kakao90g")
 
     def save_cookie_string(self):
         cookie_string = self.cookie_entry.get().strip()
@@ -970,37 +970,43 @@ class PixivDownloaderApp:
 
             try:
                 driver.get(artwork_url)
-                WebDriverWait(driver, TIMEOUT).until(EC.presence_of_element_located((By.TAG_NAME, "img")))
+                WebDriverWait(driver, TIMEOUT).until(
+                    lambda d: d.find_elements(By.CSS_SELECTOR, "div[aria-label='Preview']") or 
+                            d.find_elements(By.TAG_NAME, "img")
+                )
+                time.sleep(2)  # Extra delay for dynamic content
                 page_source = driver.page_source
                 soup = BeautifulSoup(page_source, "html.parser")
 
-                page_count = 1
+                page_count = 1  # Default
+                # Check Preview div for page count
                 if preview_div := soup.find("div", {"aria-label": "Preview"}):
-                    if span := preview_div.find("span"):
+                    spans = preview_div.find_all("span")
+                    for span in spans:
                         if "/" in span.text:
                             page_count = int(span.text.split("/")[1])
                             logger.info(f"Detected {page_count} pages from Preview div for {artwork_url}")
+                            break
+                    else:
+                        logger.info(f"No page count found in Preview div spans for {artwork_url}")
 
-                if meta_tag := soup.find("meta", property="og:image"):
-                    if "i.pximg.net" in meta_tag["content"] and page_count == 1:
-                        if img_match := re.search(r"_p(\d+)\.", meta_tag["content"]):
-                            meta_count = int(img_match.group(1)) + 1
-                            page_count = max(page_count, meta_count)
-                            logger.info(f"Adjusted page_count to {page_count} from og:image for {artwork_url}")
-
-                time.sleep(random.uniform(1, 3))
+                # Construct base URL
                 if img_match := re.search(r"https://i\.pximg\.net/img-original/img/\d{4}/\d{2}/\d{2}/\d{2}/\d{2}/\d{2}/(\d+_p\d+\.(png|jpg|jpeg|gif))", page_source):
                     base_url = img_match.group(0).rsplit("_p", 1)[0]
                     ext = img_match.group(2).split(".")[-1]
                 else:
                     illust_id = artwork_url.split("/")[-1]
-                    if meta_tag and "i.pximg.net" in meta_tag["content"]:
-                        if date_match := re.search(r"img/(\d{4}/\d{2}/\d{2}/\d{2}/\d{2}/\d{2})", meta_tag["content"]):
-                            date_path = date_match.group(1)
-                            base_url = f"https://i.pximg.net/img-original/img/{date_path}/{illust_id}"
-                            ext = "png"
+                    if meta_tag := soup.find("meta", property="og:image"):
+                        if "i.pximg.net" in meta_tag["content"]:
+                            if date_match := re.search(r"img/(\d{4}/\d{2}/\d{2}/\d{2}/\d{2}/\d{2})", meta_tag["content"]):
+                                date_path = date_match.group(1)
+                                base_url = f"https://i.pximg.net/img-original/img/{date_path}/{illust_id}"
+                                ext = "png"
+                            else:
+                                logger.error(f"No date path found in og:image for {artwork_url}")
+                                return []
                         else:
-                            logger.error(f"No date path found in og:image for {artwork_url}")
+                            logger.debug(f"og:image found but no usable pximg.net URL for {artwork_url}")
                             return []
                     else:
                         logger.error(f"No valid image URL pattern found for {artwork_url}")
