@@ -1,0 +1,5 @@
+beautifulsoup4==4.13.3      # HTML parsing
+requests==2.32.3            # Image downloads
+selenium==4.29.0            # Browser automation
+urllib3==2.3.0              # Retry logic for requests
+webdriver-manager==4.0.2    # ChromeDriver management
