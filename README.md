@@ -1,5 +1,5 @@
 # get_pixiv
-A Python-based Pixiv artwork downloader (v1.01). Search by user ID or artwork URL, download all images, specific pages, or single artworks.
+A Python-based Pixiv artwork downloader (v1.02). Search by user ID or artwork URL, download all images, specific pages, or single artworks.
 
 ## Requirements
 1. **Install Python**: Download from [python.org](https://www.python.org/). Check "Add to PATH" during installation.
@@ -43,13 +43,20 @@ For users who just want to download artworks without setup.
 ## Usage
 - **Cookies**: Paste your Pixiv cookies into "Cookie String" and click "Save Cookies".
 - **Search**: Enter a User ID and click "Search".
-- **Download**: Use "Download All", "Download Page", or "Download URL" (e.g., `https://www.pixiv.net/en/artworks/12345678`).
-- Images save to `pixiv_images/pixiv_[user_id]_images/`.
+- **Download**: 
+  - "Download All" or "Download Page": Saves to `pixiv_images/pixiv_[user_id]_images/`.
+  - "Download URL" (e.g., `https://www.pixiv.net/en/artworks/12345678`): Saves to `pixiv_images/pixiv_artwork_[artwork_id]_images/` (e.g., `pixiv_artwork_12345678_images`).
+- **Options**: Enable "Show browser" to reuse the browser instance instead of restarting it.
 
 ## Support the Developer
 If you enjoy get_pixiv, please consider donating at [https://paypal.me/kakao90g](https://paypal.me/kakao90g). This keeps the project alive—don’t remove this link!
 
 ## Changelog
+- **v1.02 (2025-03-27)**:
+  - Added: "Show Browser" toggle now reuses the open browser instance instead of restarting.
+  - Changed: "Download URL" saves to `pixiv_images/pixiv_artwork_[artwork_id]_images/` (e.g., `pixiv_artwork_12345678_images`).
+  - Improved: Increased log window width to fit longer folder names.
+  - Improved: Silenced noisy WebDriver logs in "Download All" and "Download Page" for cleaner output.
 - **v1.01 (2025-03-26)**:
   - Fixed: First artwork in "Download All" now detects all pages via Preview div.
   - Improved: Removed noisy `og:image` logs.

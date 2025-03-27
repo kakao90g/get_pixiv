@@ -23,7 +23,7 @@ from requests.adapters import HTTPAdapter
 import threading
 
 # Version constant
-VERSION = "1.01"
+VERSION = "1.02"
 
 # Suppress WebDriver Manager logs
 os.environ['WDM_LOG'] = '0'
@@ -153,7 +153,7 @@ class PixivDownloaderApp:
         log_frame = ttk.LabelFrame(self.root, text="Log")
         log_frame.pack(padx=10, pady=5, fill="both", expand=True)
 
-        self.log_text = tk.Text(log_frame, height=10, state="disabled")
+        self.log_text = tk.Text(log_frame, height=10, width=90, state="disabled")  # Increased width to 90
         scrollbar = ttk.Scrollbar(log_frame, orient="vertical", command=self.log_text.yview)
         self.log_text.configure(yscrollcommand=scrollbar.set)
         self.log_text.pack(side=tk.LEFT, padx=5, pady=5, fill="both", expand=True)
@@ -166,7 +166,7 @@ class PixivDownloaderApp:
         logger.addHandler(self.log_handler)
 
     def show_about(self):
-        messagebox.showinfo("About", "get pixiv v1.01\nA Pixiv artwork downloader.\nLicense: MIT\n© 2025 @kakao90g\nSupport this project: https://paypal.me/kakao90g")
+        messagebox.showinfo("About", f"get pixiv v{VERSION}\nA Pixiv artwork downloader.\nLicense: MIT\n© 2025 @kakao90g\nSupport this project: https://paypal.me/kakao90g")
 
     def save_cookie_string(self):
         cookie_string = self.cookie_entry.get().strip()
@@ -424,15 +424,11 @@ class PixivDownloaderApp:
         self.progress_bar["value"] = 0
         self.save_folder = os.path.join(save_folder_base, f"pixiv_{self.user_id}_images")
         os.makedirs(self.save_folder, exist_ok=True)
-        desired_headless = not self.show_browser_var.get()
-        if self.driver and self.is_session_valid(self.driver) and self.is_headless != desired_headless:
-            self.driver = self.restart_driver(self.driver, force_headless=False)
-        if not self.driver or not self.is_session_valid(self.driver):
-            self.driver = self.restart_driver(self.driver, force_headless=False)
-            if not self.driver:
-                logger.error("Download aborted: Could not initialize browser.")
-                self.reset_ui()
-                return
+        self.driver = self.restart_driver(self.driver, force_headless=False)
+        if not self.driver:
+            logger.error("Download aborted: Could not initialize browser.")
+            self.reset_ui()
+            return
         threading.Thread(target=self.download_all, daemon=True).start()
 
     def start_download_page(self):
@@ -446,15 +442,11 @@ class PixivDownloaderApp:
         self.progress_bar["value"] = 0
         self.save_folder = os.path.join(save_folder_base, f"pixiv_{self.user_id}_images")
         os.makedirs(self.save_folder, exist_ok=True)
-        desired_headless = not self.show_browser_var.get()
-        if self.driver and self.is_session_valid(self.driver) and self.is_headless != desired_headless:
-            self.driver = self.restart_driver(self.driver, force_headless=False)
-        if not self.driver or not self.is_session_valid(self.driver):
-            self.driver = self.restart_driver(self.driver, force_headless=False)
-            if not self.driver:
-                logger.error("Download aborted: Could not initialize browser.")
-                self.reset_ui()
-                return
+        self.driver = self.restart_driver(self.driver, force_headless=False)
+        if not self.driver:
+            logger.error("Download aborted: Could not initialize browser.")
+            self.reset_ui()
+            return
         threading.Thread(target=self.download_page, args=(int(page_str),), daemon=True).start()
 
     def start_download_url(self):
@@ -471,9 +463,9 @@ class PixivDownloaderApp:
         self.stop_button.config(state="normal")
         self.search_button.config(state="disabled")
         self.progress_bar["value"] = 0
-        self.save_folder = os.path.join(save_folder_base, f"pixiv_{self.user_id or artwork_url.split('/')[-1]}_images")
+        artwork_id = artwork_url.split('/')[-1]
+        self.save_folder = os.path.join(save_folder_base, f"pixiv_artwork_{artwork_id}_images")
         os.makedirs(self.save_folder, exist_ok=True)
-        # Always restart driver for a clean state
         self.driver = self.restart_driver(self.driver, force_headless=not self.show_browser_var.get())
         if not self.driver:
             logger.error("Download aborted: Could not initialize browser.")
@@ -513,22 +505,31 @@ class PixivDownloaderApp:
         try:
             artworks_url = f"https://www.pixiv.net/en/users/{self.user_id}/artworks"
             if not self.stop_download and session_valid[0]:
-                self.driver.get(artworks_url)
+                try:
+                    self.driver.get(artworks_url)
+                    WebDriverWait(self.driver, TIMEOUT).until(EC.presence_of_element_located((By.XPATH, "//a[contains(@href, '/artworks/')]")))
+                except (NoSuchWindowException, WebDriverException):
+                    logger.info(f"Stopping process on Page {page_num}: Browser window closed")
+                    session_valid[0] = False
+                    self.root.after(0, self.reset_ui)
+                    return
                 if self.stop_download:
                     logger.info(f"Session interrupted. Stopping process on Page {page_num}.")
                     self.root.after(0, self.reset_ui)
                     return
-                WebDriverWait(self.driver, TIMEOUT).until(EC.presence_of_element_located((By.XPATH, "//a[contains(@href, '/artworks/')]")))
 
             while session_valid[0] and not self.stop_download:
                 page_url = f"{artworks_url}?p={page_num}"
                 if not self.is_session_valid(self.driver):
-                    logger.info(f"Session interrupted. Stopping process on Page {page_num}.")
+                    logger.info(f"Stopping process on Page {page_num}: Browser window closed")
                     break
                 try:
                     self.driver.get(page_url)
                     WebDriverWait(self.driver, TIMEOUT).until(EC.presence_of_element_located((By.XPATH, "//a[contains(@href, '/artworks/')]")))
-                except WebDriverException:
+                except (NoSuchWindowException, WebDriverException):
+                    logger.info(f"Stopping process on Page {page_num}: Browser window closed")
+                    break
+                except TimeoutException:
                     logger.info(f"Driver error on Page {page_num}. Stopping.")
                     break
 
@@ -539,7 +540,8 @@ class PixivDownloaderApp:
                 time.sleep(2)
                 try:
                     WebDriverWait(self.driver, TIMEOUT).until(EC.presence_of_element_located((By.XPATH, "//nav[contains(@class, 'sc-xhhh7v-0')]")))
-                except WebDriverException:
+                except (NoSuchWindowException, WebDriverException):
+                    logger.info(f"Stopping process on Page {page_num}: Browser window closed")
                     break
 
                 soup = BeautifulSoup(self.driver.page_source, "html.parser")
@@ -619,20 +621,21 @@ class PixivDownloaderApp:
                     self.root.update_idletasks()
 
                 if not session_valid[0] or self.stop_download:
-                    logger.info(f"Session interrupted. Stopping process on Page {page_num}.")
                     break
 
-                if self.stop_download:
-                    break
                 logger.info(f"Returning to artworks list: {page_url}")
                 if not self.is_session_valid(self.driver):
-                    logger.info(f"Session interrupted. Stopping process on Page {page_num}.")
+                    logger.info(f"Stopping process on Page {page_num}: Browser window closed")
                     break
-                self.driver.get(page_url)
-                WebDriverWait(self.driver, TIMEOUT).until(EC.presence_of_element_located((By.XPATH, "//a[contains(@href, '/artworks/')]")))
-                self.driver.execute_script("window.scrollTo(0, document.body.scrollHeight);")
-                time.sleep(2)
-                WebDriverWait(self.driver, TIMEOUT).until(EC.presence_of_element_located((By.XPATH, "//nav[contains(@class, 'sc-xhhh7v-0')]")))
+                try:
+                    self.driver.get(page_url)
+                    WebDriverWait(self.driver, TIMEOUT).until(EC.presence_of_element_located((By.XPATH, "//a[contains(@href, '/artworks/')]")))
+                    self.driver.execute_script("window.scrollTo(0, document.body.scrollHeight);")
+                    time.sleep(2)
+                    WebDriverWait(self.driver, TIMEOUT).until(EC.presence_of_element_located((By.XPATH, "//nav[contains(@class, 'sc-xhhh7v-0')]")))
+                except (NoSuchWindowException, WebDriverException):
+                    logger.info(f"Stopping process on Page {page_num}: Browser window closed")
+                    break
 
                 next_found = False
                 for attempt in range(3):
@@ -678,7 +681,6 @@ class PixivDownloaderApp:
 
         except Exception as e:
             logger.error(f"Unexpected error in download_all: {e}")
-            logger.info(f"Session interrupted. Stopping process on Page {page_num}.")
         finally:
             if failed_urls:
                 logger.info("Failed artworks:")
@@ -716,12 +718,18 @@ class PixivDownloaderApp:
         try:
             artworks_url = f"https://www.pixiv.net/en/users/{self.user_id}/artworks?p={page_num}"
             if not self.stop_download and session_valid[0]:
-                self.driver.get(artworks_url)
+                try:
+                    self.driver.get(artworks_url)
+                    WebDriverWait(self.driver, TIMEOUT).until(EC.presence_of_element_located((By.XPATH, "//a[contains(@href, '/artworks/')]")))
+                except (NoSuchWindowException, WebDriverException):
+                    logger.info(f"Stopping process on Page {page_num}: Browser window closed")
+                    session_valid[0] = False
+                    self.root.after(0, self.reset_ui)
+                    return
                 if self.stop_download:
                     logger.info(f"Session interrupted. Stopping process on Page {page_num}.")
                     self.root.after(0, self.reset_ui)
                     return
-                WebDriverWait(self.driver, TIMEOUT).until(EC.presence_of_element_located((By.XPATH, "//a[contains(@href, '/artworks/')]")))
 
             if self.stop_download:
                 logger.info(f"Session interrupted. Stopping process on Page {page_num}.")
@@ -731,8 +739,8 @@ class PixivDownloaderApp:
             time.sleep(2)
             try:
                 WebDriverWait(self.driver, TIMEOUT).until(EC.presence_of_element_located((By.XPATH, "//nav[contains(@class, 'sc-xhhh7v-0')]")))
-            except WebDriverException:
-                logger.info(f"Session interrupted. Stopping process on Page {page_num}.")
+            except (NoSuchWindowException, WebDriverException):
+                logger.info(f"Stopping process on Page {page_num}: Browser window closed")
                 return
 
             soup = BeautifulSoup(self.driver.page_source, "html.parser")
@@ -751,7 +759,6 @@ class PixivDownloaderApp:
                 if not session_valid[0] or self.stop_download:
                     for remaining_url in page_linked - processed_urls:
                         failed_urls.append((remaining_url, page_num, "Session interrupted"))
-                    logger.info(f"Session interrupted. Stopping process on Page {page_num}.")
                     break
 
                 image_urls = self.get_image_urls(artwork_url, self.driver, session_valid)
@@ -760,7 +767,6 @@ class PixivDownloaderApp:
                         failed_urls.append((artwork_url, page_num, "Session interrupted"))
                         for remaining_url in page_linked - processed_urls - {artwork_url}:
                             failed_urls.append((remaining_url, page_num, "Session interrupted"))
-                        logger.info(f"Session interrupted. Stopping process on Page {page_num}.")
                         break
                     failed_urls.append((artwork_url, page_num, "Failed to extract image URLs"))
                     processed_urls.add(artwork_url)
@@ -794,7 +800,6 @@ class PixivDownloaderApp:
                 if self.stop_download:
                     for remaining_url in page_linked - processed_urls:
                         failed_urls.append((remaining_url, page_num, "Session interrupted"))
-                    logger.info(f"Session interrupted. Stopping process on Page {page_num}.")
                     break
 
                 self.processed_count += 1
@@ -815,7 +820,6 @@ class PixivDownloaderApp:
 
         except Exception as e:
             logger.error(f"Unexpected error in download_page: {e}")
-            logger.info(f"Session interrupted. Stopping process on Page {page_num}.")
         finally:
             if failed_urls:
                 logger.info("Failed artworks:")
@@ -925,14 +929,20 @@ class PixivDownloaderApp:
             self.root.after(0, self.reset_ui)
 
     def restart_driver(self, existing_driver=None, force_headless=False):
-        if existing_driver:
-            try:
-                existing_driver.quit()
-            except Exception:
-                pass
+        desired_headless = force_headless or not self.show_browser_var.get()
+        
+        if existing_driver and self.is_session_valid(existing_driver):
+            if self.is_headless == desired_headless:
+                return existing_driver
+            else:
+                try:
+                    existing_driver.quit()
+                except Exception:
+                    pass
+        
         options = webdriver.ChromeOptions()
         options.add_argument('--log-level=3')
-        self.is_headless = force_headless or not self.show_browser_var.get()
+        self.is_headless = desired_headless
         if self.is_headless:
             options.add_argument('--headless=new')
         try:
@@ -979,7 +989,6 @@ class PixivDownloaderApp:
                 soup = BeautifulSoup(page_source, "html.parser")
 
                 page_count = 1  # Default
-                # Check Preview div for page count
                 if preview_div := soup.find("div", {"aria-label": "Preview"}):
                     spans = preview_div.find_all("span")
                     for span in spans:
@@ -990,7 +999,6 @@ class PixivDownloaderApp:
                     else:
                         logger.info(f"No page count found in Preview div spans for {artwork_url}")
 
-                # Construct base URL
                 if img_match := re.search(r"https://i\.pximg\.net/img-original/img/\d{4}/\d{2}/\d{2}/\d{2}/\d{2}/\d{2}/(\d+_p\d+\.(png|jpg|jpeg|gif))", page_source):
                     base_url = img_match.group(0).rsplit("_p", 1)[0]
                     ext = img_match.group(2).split(".")[-1]
