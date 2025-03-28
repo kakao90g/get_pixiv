@@ -46,7 +46,7 @@ For users who just want to download artworks without setup.
 - **Download**: 
   - "Download All" or "Download Page": Saves to `pixiv_images/pixiv_[user_id]_images/`.
   - "Download URL" (e.g., `https://www.pixiv.net/en/artworks/12345678`): Saves to `pixiv_images/pixiv_artwork_[artwork_id]_images/` (e.g., `pixiv_artwork_12345678_images`).
-- **Options**: Enable "Show browser" to reuse the browser instance instead of restarting it.
+- **Options**: Enable "Show browser" to view real-time automation progress.
 
 ## Support the Developer
 If you enjoy get_pixiv, please consider donating at [https://paypal.me/kakao90g](https://paypal.me/kakao90g). This keeps the project alive—don’t remove this link!
