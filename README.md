@@ -1,5 +1,5 @@
 # get_pixiv
-A Python-based Pixiv artwork downloader (v1.02). Search by user ID or artwork URL, download all images, specific pages, or single artworks.
+A Python-based Pixiv artwork downloader (v1.03). Search by user ID or artwork URL, download all images, specific pages, or single artworks.
 
 ## Requirements
 1. **Install Python**: Download from [python.org](https://www.python.org/). Check "Add to PATH" during installation.
@@ -52,6 +52,13 @@ For users who just want to download artworks without setup.
 If you enjoy get_pixiv, please consider donating at [https://paypal.me/kakao90g](https://paypal.me/kakao90g). This keeps the project alive—don’t remove this link!
 
 ## Changelog
+- **v1.03 (2025-04-02)**:
+  - Added: "Verify Cookie" feature to accurately detect login state.
+  - Removed: Cookie authentication on startup for simpler setup.
+  - Changed: Browser no longer auto-restarts on close, enabling graceful exits.
+  - Improved: "About" window now uses custom dialogs.
+  - Added: "Check for Updates" in About window with universal `updater.exe` for auto-fetching latest releases from GitHub.
+  - Improved: App window now opens in the upper-right corner of the screen.
 - **v1.02 (2025-03-27)**:
   - Added: "Show Browser" toggle now reuses the open browser instance instead of restarting.
   - Changed: "Download URL" saves to `pixiv_images/pixiv_artwork_[artwork_id]_images/` (e.g., `pixiv_artwork_12345678_images`).

@@ -15,15 +15,17 @@ import re
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
-from selenium.common.exceptions import TimeoutException, InvalidSessionIdException, WebDriverException, NoSuchWindowException
+from selenium.common.exceptions import TimeoutException, WebDriverException, InvalidSessionIdException, NoSuchWindowException
 import time
 import random
 from urllib3.util.retry import Retry
 from requests.adapters import HTTPAdapter
 import threading
+import webbrowser
+import subprocess
 
 # Version constant
-VERSION = "1.02"
+VERSION = "1.03"
 
 # Suppress WebDriver Manager logs
 os.environ['WDM_LOG'] = '0'
@@ -51,6 +53,38 @@ headers = {
     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
 }
 
+class CustomDialog(tk.Toplevel):
+    def __init__(self, parent, title, message, buttons=None, link=None):
+        super().__init__(parent)
+        self.parent = parent
+        self.grab_set()
+        self.title(title)
+        self.resizable(False, False)
+        tk.Label(self, text=message, justify="center", wraplength=280).pack(pady=10)
+        if link:
+            link_label = tk.Label(self, text=link, fg="blue", cursor="hand2", wraplength=280)
+            link_label.pack(pady=5)
+            link_label.bind("<Button-1>", lambda e: webbrowser.open(link))
+        if buttons is None:
+            buttons = [("OK", self.on_close)]
+        btn_frame = tk.Frame(self)
+        btn_frame.pack(pady=10)
+        for text, command in buttons:
+            tk.Button(btn_frame, text=text, command=command, width=10).pack(side="left", padx=2)
+        self.update_idletasks()
+        width = max(300, self.winfo_width())
+        height = self.winfo_height()
+        x = parent.winfo_x() + (parent.winfo_width() - width) // 2
+        y = parent.winfo_y() + (parent.winfo_height() - height) // 2
+        self.geometry(f"{width}x{height}+{x}+{y}")
+        self.update()
+        self.lift()
+        self.focus_force()
+        self.protocol("WM_DELETE_WINDOW", self.on_close)
+
+    def on_close(self):
+        self.destroy()
+
 class PixivDownloaderApp:
     def __init__(self, root):
         self.root = root
@@ -71,6 +105,14 @@ class PixivDownloaderApp:
         self.show_browser_var = tk.BooleanVar(value=False)
         self.setup_ui()
         self.load_cookies()
+        self.root.update_idletasks()
+        window_width = self.root.winfo_width()
+        window_height = self.root.winfo_height()
+        screen_width = self.root.winfo_screenwidth()
+        screen_height = self.root.winfo_screenheight()
+        x = screen_width - window_width - 150
+        y = 100
+        self.root.geometry(f"+{x}+{y}")
         self.root.protocol("WM_DELETE_WINDOW", self.on_closing)
 
     def setup_ui(self):
@@ -89,9 +131,13 @@ class PixivDownloaderApp:
         self.save_cookie_button = ttk.Button(cookie_frame, text="Save Cookies", command=self.save_cookie_string, width=15)
         self.save_cookie_button.grid(row=1, column=0, columnspan=2, pady=5)
 
-        self.clear_cookie_button = ttk.Button(cookie_frame, text="Clear Cookies", command=self.clear_cookies, state="disabled", width=15)
-        self.clear_cookie_button.grid(row=2, column=0, columnspan=2, pady=5)
+        self.verify_cookies_button = ttk.Button(cookie_frame, text="Verify Cookies", command=self.verify_cookies, width=15)
+        self.verify_cookies_button.grid(row=2, column=0, columnspan=2, pady=5)
+        self.verify_cookies_button.config(state="disabled")
 
+        self.clear_cookie_button = ttk.Button(cookie_frame, text="Clear Cookies", command=self.clear_cookies, state="disabled", width=15)
+        self.clear_cookie_button.grid(row=3, column=0, columnspan=2, pady=5)
+        
         # Options Frame
         options_frame = ttk.LabelFrame(self.root, text="Options")
         options_frame.pack(padx=10, pady=5, fill="x")
@@ -153,7 +199,7 @@ class PixivDownloaderApp:
         log_frame = ttk.LabelFrame(self.root, text="Log")
         log_frame.pack(padx=10, pady=5, fill="both", expand=True)
 
-        self.log_text = tk.Text(log_frame, height=10, width=90, state="disabled")  # Increased width to 90
+        self.log_text = tk.Text(log_frame, height=10, width=90, state="disabled")
         scrollbar = ttk.Scrollbar(log_frame, orient="vertical", command=self.log_text.yview)
         self.log_text.configure(yscrollcommand=scrollbar.set)
         self.log_text.pack(side=tk.LEFT, padx=5, pady=5, fill="both", expand=True)
@@ -166,7 +212,107 @@ class PixivDownloaderApp:
         logger.addHandler(self.log_handler)
 
     def show_about(self):
-        messagebox.showinfo("About", f"get pixiv v{VERSION}\nA Pixiv artwork downloader.\nLicense: MIT\n© 2025 @kakao90g\nSupport this project: https://paypal.me/kakao90g")
+        about_window = tk.Toplevel(self.root)
+        about_window.title("About")
+        about_window.resizable(False, False)
+        about_window.transient(self.root)
+        about_window.grab_set()
+
+        about_text = f"get pixiv v{VERSION}\nA Pixiv artwork downloader.\nLicense: MIT\n© 2025 @kakao90g\nSupport this project: "
+        static_label = tk.Label(about_window, text=about_text, justify="center")
+        static_label.pack(pady=5)
+
+        paypal_url = "https://paypal.me/kakao90g"
+        link_label = tk.Label(about_window, text=paypal_url, fg="blue", cursor="hand2", justify="center")
+        link_label.pack()
+        link_label.bind("<Button-1>", lambda e: webbrowser.open_new_tab(paypal_url))
+
+        check_button = tk.Button(about_window, text="Check for Updates", command=self.check_for_updates)
+        check_button.pack(pady=5)
+
+        about_window.update_idletasks()
+        about_width = 300
+        about_height = 150
+        app_width = self.root.winfo_width()
+        app_height = self.root.winfo_height()
+        app_x = self.root.winfo_x()
+        app_y = self.root.winfo_y()
+        about_x = app_x + (app_width - about_width) // 2
+        about_y = app_y + (app_height - about_height) // 2
+        about_window.geometry(f"{about_width}x{about_height}+{about_x}+{about_y}")
+
+    def check_for_updates(self):
+        url = "https://github.com/kakao90g/get_pixiv/releases"
+        try:
+            response = self.session.get(url, headers={"User-Agent": "Mozilla/5.0"}, timeout=10)
+            response.raise_for_status()
+            soup = BeautifulSoup(response.text, "html.parser")
+            latest_tag = soup.find("span", class_="Label--success", string="Latest")
+            if not latest_tag:
+                raise ValueError("Could not find 'Latest' tag")
+            version_link = latest_tag.find_previous("a", class_="Link--primary")
+            if not version_link:
+                raise ValueError("Could not find version link")
+            latest_version = version_link.text.strip().split("v")[-1]
+            current_version = VERSION
+            if latest_version == current_version:
+                CustomDialog(self.root, "Update Check", "Version is up to date.")
+            elif tuple(map(int, latest_version.split("."))) > tuple(map(int, current_version.split("."))):
+                self.show_update_dialog(latest_version)
+            else:
+                CustomDialog(self.root, "Update Check", "Version is up to date.")
+        except Exception as e:
+            logger.error(f"Failed to check for updates: {str(e)}")
+            CustomDialog(self.root, "Update Check", "Unable to check for updates.")
+
+    def show_update_dialog(self, new_version):
+        current_exe = sys.executable if getattr(sys, "frozen", False) else None
+        if not current_exe:
+            CustomDialog(self.root, "Update Check", 
+                        "Please download the latest release from:",
+                        link="https://github.com/kakao90g/get_pixiv/releases")
+            return
+
+        updater_path = os.path.join(os.path.dirname(current_exe), "updater.exe")
+        github_link = "https://github.com/kakao90g/get_pixiv/releases"
+
+        def run_updater():
+            subprocess.Popen([updater_path, new_version])
+            self.on_closing()
+
+        def on_no(parent_dialog):
+            parent_dialog.destroy()
+            CustomDialog(self.root, "Update",
+                        "Please download from:",
+                        link=github_link)
+
+        if os.path.exists(updater_path):
+            update_dialog = CustomDialog(self.root, "Update Available",
+                                        f"New version v{new_version} is available.\nDo you want to run the updater now?",
+                                        buttons=[("Yes", run_updater), 
+                                                 ("No", lambda: on_no(update_dialog))])
+        else:
+            def download_and_run():
+                try:
+                    updater_url = f"https://github.com/kakao90g/get_pixiv/releases/latest/download/updater.exe"
+                    response = self.session.get(updater_url, headers={"User-Agent": "Mozilla/5.0"}, timeout=30, stream=True)
+                    response.raise_for_status()
+                    with open(updater_path, "wb") as f:
+                        f.write(response.content)
+                    if os.path.getsize(updater_path) > 0:
+                        run_updater()
+                    else:
+                        raise ValueError("Updater download is empty")
+                except Exception as e:
+                    logger.error(f"Failed to download updater: {str(e)}")
+                    CustomDialog(self.root, "Update Error",
+                                "Failed to download updater. Please get it from:",
+                                link=github_link)
+
+            update_dialog = CustomDialog(self.root, "Update Available",
+                                        f"New version v{new_version} is available.\nDo you want to download and run the updater now?",
+                                        buttons=[("Yes", download_and_run), 
+                                                 ("No", lambda: on_no(update_dialog))])
 
     def save_cookie_string(self):
         cookie_string = self.cookie_entry.get().strip()
@@ -178,7 +324,7 @@ class PixivDownloaderApp:
             if cookie_string.startswith('['):
                 self.cookies = json.loads(cookie_string)
                 if not all(isinstance(c, dict) and "name" in c and "value" in c for c in self.cookies):
-                    raise ValueError("Invalid JSON cookie format. Each cookie must have 'name' and 'value'.")
+                    raise ValueError("Invalid JSON cookie format.")
             else:
                 cookie_parts = [c for c in cookie_string.split("; ") if "=" in c]
                 if not cookie_parts:
@@ -189,31 +335,18 @@ class PixivDownloaderApp:
             if not self.cookies:
                 raise ValueError("No valid cookies parsed from the string.")
 
-            self.save_cookies()
+            with open(COOKIE_FILE, "w") as f:
+                json.dump(self.cookies, f)
             headers["Cookie"] = "; ".join(f"{c['name']}={c['value']}" for c in self.cookies)
-            self.driver = self.restart_driver(self.driver, force_headless=True)
-            self.driver.get("https://www.pixiv.net/en/")
-            if "login" in self.driver.current_url.lower():
-                raise ValueError("Cookies are invalid. Please check and try again.")
-            
-            logger.info("Cookies saved and validated successfully!")
             self.cookies_valid = True
             self.clear_cookie_button.config(state="normal")
             self.search_button.config(state="normal")
-            self.download_button.config(state="disabled")
-            self.download_page_button.config(state="disabled")
             self.download_url_button.config(state="normal")
+            self.verify_cookies_button.config(state="normal")
+            logger.info("Cookies saved successfully!")
             self.cookie_entry.delete(0, tk.END)
-        except json.JSONDecodeError:
-            logger.error("Failed to parse cookie string: Invalid JSON format")
-        except ValueError as e:
-            logger.error(f"Failed to process cookie string: {e}")
         except Exception as e:
-            logger.error(f"Unexpected error saving cookies: {e}")
-        finally:
-            if self.driver:
-                self.driver.quit()
-                self.driver = None
+            logger.error(f"Failed to process cookie string: {e}")
 
     def clear_cookies(self):
         if os.path.exists(COOKIE_FILE):
@@ -250,41 +383,85 @@ class PixivDownloaderApp:
         if os.path.exists(COOKIE_FILE):
             with open(COOKIE_FILE, "r") as f:
                 self.cookies = json.load(f)
+            
             headers["Cookie"] = "; ".join(f"{c['name']}={c['value']}" for c in self.cookies)
+            self.cookies_valid = True
+            self.clear_cookie_button.config(state="normal")
+            self.search_button.config(state="normal")
+            self.download_url_button.config(state="normal")
+            self.verify_cookies_button.config(state="normal")
             logger.info("Cookies loaded from file.")
-            self.driver = self.restart_driver(self.driver, force_headless=True)
-            self.driver.get("https://www.pixiv.net/en/")
-            if "login" in self.driver.current_url.lower():
-                logger.warning("Loaded cookies may be invalid. Please enter a new cookie string.")
-                self.clear_cookies()
-            else:
-                logger.info("Cookie validation successful!")
-                self.cookies_valid = True
-                self.clear_cookie_button.config(state="normal")
-                self.search_button.config(state="normal")
-                self.download_url_button.config(state="normal")
-            if self.driver:
-                self.driver.quit()
-                self.driver = None
         else:
             logger.info("No cookie file found. Please enter a cookie string.")
+
+    def verify_cookies(self):
+        if not self.cookies:
+            logger.error("No cookies available to verify. Please enter a cookie string.")
+            return
+
+        user_id = None
+        for cookie in self.cookies:
+            if cookie["name"] == "__utmv":
+                value = cookie["value"]
+                match = re.search(r"user_id=(\d+)", value)
+                if match:
+                    user_id = match.group(1)
+                    break
+        
+        if not user_id:
+            logger.error("Could not extract user ID from cookies. Using default URL.")
+            url = "https://www.pixiv.net/en/"
+        else:
+            url = f"https://www.pixiv.net/en/users/{user_id}"
+
+        logger.info("Verifying cookies...")
+        self.verify_cookies_button.config(state="disabled")
+        
+        driver = self.restart_driver(None, force_headless=False)
+        if not driver:
+            logger.error("Could not initialize browser for cookie verification.")
+            self.verify_cookies_button.config(state="normal")
+            return
+
+        try:
+            driver.get(url)
+            try:
+                WebDriverWait(driver, 5).until(
+                    EC.any_of(
+                        EC.presence_of_element_located((By.XPATH, "//a[contains(@href, '/login.php')]")),
+                        EC.presence_of_element_located((By.XPATH, "//button[contains(text(), 'Login')]"))
+                    )
+                )
+                logger.warning("Cookies need a refresh, please enter a new one.")
+            except TimeoutException:
+                logger.info("Cookies are still valid.")
+        except Exception as e:
+            logger.error(f"Error verifying cookies: {e}")
+        finally:
+            driver.quit()
+            self.verify_cookies_button.config(state="normal")
 
     def search_user_id(self):
         self.user_id = self.user_id_entry.get()
         if not self.user_id.isdigit():
             logger.error("Invalid User ID. Please enter a valid number.")
             return
+
         self.search_button.config(state="disabled")
         self.download_button.config(state="disabled")
         self.download_page_button.config(state="disabled")
         self.download_url_button.config(state="disabled")
+        self.verify_cookies_button.config(state="disabled")
         logger.info(f"Searching for User ID: {self.user_id}")
-        self.driver = self.restart_driver(self.driver, force_headless=False)
+        self.driver = self.restart_driver(self.driver, force_headless=None)
         if not self.driver:
             logger.error("Search aborted: Could not initialize browser.")
             self.search_button.config(state="normal")
             self.download_url_button.config(state="normal")
+            self.verify_cookies_button.config(state="normal")
             return
+        
+        self.driver.get(f"https://www.pixiv.net/en/users/{self.user_id}")
         threading.Thread(target=self.fetch_artwork_count_and_pages, daemon=True).start()
 
     def clear_user_id(self):
@@ -327,7 +504,10 @@ class PixivDownloaderApp:
                 logger.error("Cookies are not validated. Please save valid cookies first.")
                 return
             if not self.driver or not self.is_session_valid(self.driver):
-                self.driver = self.restart_driver(self.driver)
+                logger.error("Browser session invalid or closed. Aborting search.")
+                self.fetch_complete = False
+                self.root.after(0, self.reset_ui)
+                return
             base_url = f"https://www.pixiv.net/en/users/{self.user_id}"
             self.driver.get(base_url)
             WebDriverWait(self.driver, TIMEOUT).until(
@@ -354,16 +534,12 @@ class PixivDownloaderApp:
             self.page_combo["values"] = [str(i) for i in range(1, self.total_pages + 1)]
             self.page_combo.set("1")
             self.fetch_complete = True
-        except NoSuchWindowException:
-            logger.error("Search interrupted: Browser window was closed.")
-            error_occurred = True
-            self.fetch_complete = False
-        except WebDriverException:
-            logger.error("Search interrupted: Browser connection lost.")
+        except (TimeoutException, WebDriverException, InvalidSessionIdException) as e:
+            logger.error(f"Search interrupted: {str(e)}")
             error_occurred = True
             self.fetch_complete = False
         except Exception as e:
-            logger.exception(f"Unexpected error fetching artwork count or pages: {e}")
+            logger.error(f"Unexpected error fetching artwork count or pages: {str(e)}")
             error_occurred = True
             self.fetch_complete = False
         finally:
@@ -421,10 +597,11 @@ class PixivDownloaderApp:
         self.download_url_button.config(state="disabled")
         self.stop_button.config(state="normal")
         self.search_button.config(state="disabled")
+        self.verify_cookies_button.config(state="disabled")
         self.progress_bar["value"] = 0
         self.save_folder = os.path.join(save_folder_base, f"pixiv_{self.user_id}_images")
         os.makedirs(self.save_folder, exist_ok=True)
-        self.driver = self.restart_driver(self.driver, force_headless=False)
+        self.driver = self.restart_driver(self.driver, force_headless=None)
         if not self.driver:
             logger.error("Download aborted: Could not initialize browser.")
             self.reset_ui()
@@ -439,10 +616,11 @@ class PixivDownloaderApp:
         self.download_url_button.config(state="disabled")
         self.stop_button.config(state="normal")
         self.search_button.config(state="disabled")
+        self.verify_cookies_button.config(state="disabled")
         self.progress_bar["value"] = 0
         self.save_folder = os.path.join(save_folder_base, f"pixiv_{self.user_id}_images")
         os.makedirs(self.save_folder, exist_ok=True)
-        self.driver = self.restart_driver(self.driver, force_headless=False)
+        self.driver = self.restart_driver(self.driver, force_headless=None)
         if not self.driver:
             logger.error("Download aborted: Could not initialize browser.")
             self.reset_ui()
@@ -451,7 +629,7 @@ class PixivDownloaderApp:
 
     def start_download_url(self):
         artwork_url = self.url_entry.get().strip()
-        if not artwork_url or not re.match(r"https://www\.pixiv\.net/en/artworks/\d+", artwork_url):
+        if not artwork_url or not re.match(r"https://www\.pixiv.net/en/artworks/\d+", artwork_url):
             logger.error("Invalid or empty artwork URL. Please enter a valid Pixiv artwork URL (e.g., https://www.pixiv.net/en/artworks/12345678).")
             self.download_url_button.config(state="normal")
             return
@@ -462,6 +640,7 @@ class PixivDownloaderApp:
         self.download_url_button.config(state="disabled")
         self.stop_button.config(state="normal")
         self.search_button.config(state="disabled")
+        self.verify_cookies_button.config(state="disabled")
         self.progress_bar["value"] = 0
         artwork_id = artwork_url.split('/')[-1]
         self.save_folder = os.path.join(save_folder_base, f"pixiv_artwork_{artwork_id}_images")
@@ -471,6 +650,8 @@ class PixivDownloaderApp:
             logger.error("Download aborted: Could not initialize browser.")
             self.reset_ui()
             return
+        
+        self.driver.get(artwork_url)
         threading.Thread(target=self.download_url, args=(artwork_url,), daemon=True).start()
 
     def stop_download_process(self):
@@ -483,6 +664,7 @@ class PixivDownloaderApp:
         self.download_url_button.config(state="normal" if self.cookies_valid else "disabled")
         self.stop_button.config(state="disabled")
         self.search_button.config(state="normal")
+        self.verify_cookies_button.config(state="normal" if self.cookies_valid else "disabled")
         self.progress_bar["value"] = 0
 
     def download_all(self):
@@ -491,11 +673,9 @@ class PixivDownloaderApp:
         self.downloaded_count = 0
         self.skipped_count = 0
         if not self.driver or not self.is_session_valid(self.driver):
-            self.driver = self.restart_driver(self.driver, force_headless=False)
-            if not self.driver:
-                logger.error("Download aborted: Could not initialize browser.")
-                self.root.after(0, self.reset_ui)
-                return
+            logger.error("Browser session invalid or closed. Aborting download.")
+            self.root.after(0, self.reset_ui)
+            return
         session_valid = [True]
         artwork_links_seen = set()
         page_num = 1
@@ -508,8 +688,8 @@ class PixivDownloaderApp:
                 try:
                     self.driver.get(artworks_url)
                     WebDriverWait(self.driver, TIMEOUT).until(EC.presence_of_element_located((By.XPATH, "//a[contains(@href, '/artworks/')]")))
-                except (NoSuchWindowException, WebDriverException):
-                    logger.info(f"Stopping process on Page {page_num}: Browser window closed")
+                except (TimeoutException, WebDriverException, InvalidSessionIdException):
+                    logger.info(f"Stopping process on Page {page_num}: Browser window closed or timed out")
                     session_valid[0] = False
                     self.root.after(0, self.reset_ui)
                     return
@@ -526,11 +706,8 @@ class PixivDownloaderApp:
                 try:
                     self.driver.get(page_url)
                     WebDriverWait(self.driver, TIMEOUT).until(EC.presence_of_element_located((By.XPATH, "//a[contains(@href, '/artworks/')]")))
-                except (NoSuchWindowException, WebDriverException):
-                    logger.info(f"Stopping process on Page {page_num}: Browser window closed")
-                    break
-                except TimeoutException:
-                    logger.info(f"Driver error on Page {page_num}. Stopping.")
+                except (TimeoutException, WebDriverException, InvalidSessionIdException):
+                    logger.info(f"Stopping process on Page {page_num}: Browser window closed or timed out")
                     break
 
                 if self.stop_download:
@@ -540,8 +717,8 @@ class PixivDownloaderApp:
                 time.sleep(2)
                 try:
                     WebDriverWait(self.driver, TIMEOUT).until(EC.presence_of_element_located((By.XPATH, "//nav[contains(@class, 'sc-xhhh7v-0')]")))
-                except (NoSuchWindowException, WebDriverException):
-                    logger.info(f"Stopping process on Page {page_num}: Browser window closed")
+                except (TimeoutException, WebDriverException, InvalidSessionIdException):
+                    logger.info(f"Stopping process on Page {page_num}: Browser window closed or timed out")
                     break
 
                 soup = BeautifulSoup(self.driver.page_source, "html.parser")
@@ -633,8 +810,8 @@ class PixivDownloaderApp:
                     self.driver.execute_script("window.scrollTo(0, document.body.scrollHeight);")
                     time.sleep(2)
                     WebDriverWait(self.driver, TIMEOUT).until(EC.presence_of_element_located((By.XPATH, "//nav[contains(@class, 'sc-xhhh7v-0')]")))
-                except (NoSuchWindowException, WebDriverException):
-                    logger.info(f"Stopping process on Page {page_num}: Browser window closed")
+                except (TimeoutException, WebDriverException, InvalidSessionIdException):
+                    logger.info(f"Stopping process on Page {page_num}: Browser window closed or timed out")
                     break
 
                 next_found = False
@@ -670,7 +847,7 @@ class PixivDownloaderApp:
                         logger.info(f"Found 'Next' button on Page {page_num - 1}, proceeding.")
                         time.sleep(random.uniform(2, 4))
                         break
-                    except (TimeoutException, WebDriverException):
+                    except (TimeoutException, WebDriverException, InvalidSessionIdException):
                         if attempt == 2:
                             logger.info(f"No 'Next' button found on Page {page_num}. End of pagination.")
                             next_found = False
@@ -680,7 +857,7 @@ class PixivDownloaderApp:
                     break
 
         except Exception as e:
-            logger.error(f"Unexpected error in download_all: {e}")
+            logger.error(f"Unexpected error in download_all: {str(e)}")
         finally:
             if failed_urls:
                 logger.info("Failed artworks:")
@@ -705,11 +882,9 @@ class PixivDownloaderApp:
         self.downloaded_count = 0
         self.skipped_count = 0
         if not self.driver or not self.is_session_valid(self.driver):
-            self.driver = self.restart_driver(self.driver, force_headless=False)
-            if not self.driver:
-                logger.error("Download aborted: Could not initialize browser.")
-                self.root.after(0, self.reset_ui)
-                return
+            logger.error("Browser session invalid or closed. Aborting download.")
+            self.root.after(0, self.reset_ui)
+            return
         session_valid = [True]
         artwork_links_seen = set()
         failed_urls = []
@@ -721,8 +896,8 @@ class PixivDownloaderApp:
                 try:
                     self.driver.get(artworks_url)
                     WebDriverWait(self.driver, TIMEOUT).until(EC.presence_of_element_located((By.XPATH, "//a[contains(@href, '/artworks/')]")))
-                except (NoSuchWindowException, WebDriverException):
-                    logger.info(f"Stopping process on Page {page_num}: Browser window closed")
+                except (TimeoutException, WebDriverException, InvalidSessionIdException):
+                    logger.info(f"Stopping process on Page {page_num}: Browser window closed or timed out")
                     session_valid[0] = False
                     self.root.after(0, self.reset_ui)
                     return
@@ -739,8 +914,8 @@ class PixivDownloaderApp:
             time.sleep(2)
             try:
                 WebDriverWait(self.driver, TIMEOUT).until(EC.presence_of_element_located((By.XPATH, "//nav[contains(@class, 'sc-xhhh7v-0')]")))
-            except (NoSuchWindowException, WebDriverException):
-                logger.info(f"Stopping process on Page {page_num}: Browser window closed")
+            except (TimeoutException, WebDriverException, InvalidSessionIdException):
+                logger.info(f"Stopping process on Page {page_num}: Browser window closed or timed out")
                 return
 
             soup = BeautifulSoup(self.driver.page_source, "html.parser")
@@ -819,7 +994,7 @@ class PixivDownloaderApp:
                 self.root.update_idletasks()
 
         except Exception as e:
-            logger.error(f"Unexpected error in download_page: {e}")
+            logger.error(f"Unexpected error in download_page: {str(e)}")
         finally:
             if failed_urls:
                 logger.info("Failed artworks:")
@@ -844,11 +1019,9 @@ class PixivDownloaderApp:
         self.downloaded_count = 0
         self.skipped_count = 0
         if not self.driver or not self.is_session_valid(self.driver):
-            self.driver = self.restart_driver(self.driver, force_headless=False)
-            if not self.driver:
-                logger.error("Download aborted: Could not initialize browser.")
-                self.root.after(0, self.reset_ui)
-                return
+            logger.error("Browser session invalid or closed. Aborting download.")
+            self.root.after(0, self.reset_ui)
+            return
         session_valid = [True]
         failed_urls = []
         failed_downloads = []
@@ -907,8 +1080,11 @@ class PixivDownloaderApp:
                 self.progress_bar["value"] = 100
                 self.root.update_idletasks()
 
+        except (TimeoutException, WebDriverException, InvalidSessionIdException) as e:
+            logger.info(f"Stopping process for {artwork_url}: {str(e)}")
+            session_valid[0] = False
         except Exception as e:
-            logger.error(f"Unexpected error in download_url: {e}")
+            logger.error(f"Unexpected error in download_url: {str(e)}")
             logger.info("Session interrupted. Stopping process.")
         finally:
             if failed_urls:
@@ -928,8 +1104,13 @@ class PixivDownloaderApp:
             self.driver = None
             self.root.after(0, self.reset_ui)
 
-    def restart_driver(self, existing_driver=None, force_headless=False):
-        desired_headless = force_headless or not self.show_browser_var.get()
+    def restart_driver(self, existing_driver=None, force_headless=None):
+        # If force_headless is None, respect the show_browser_var toggle
+        if force_headless is None:
+            desired_headless = not self.show_browser_var.get()
+        else:
+            # If force_headless is explicitly set, it takes precedence
+            desired_headless = force_headless
         
         if existing_driver and self.is_session_valid(existing_driver):
             if self.is_headless == desired_headless:
@@ -945,6 +1126,7 @@ class PixivDownloaderApp:
         self.is_headless = desired_headless
         if self.is_headless:
             options.add_argument('--headless=new')
+        
         try:
             with redirect_stdout(StringIO()):
                 new_driver = webdriver.Chrome(service=Service(ChromeDriverManager().install()), options=options)
@@ -952,14 +1134,11 @@ class PixivDownloaderApp:
             for cookie in self.cookies:
                 try:
                     new_driver.add_cookie(cookie)
-                except (NoSuchWindowException, WebDriverException):
+                except Exception:
                     logger.error("Browser window closed during cookie setup.")
                     new_driver.quit()
                     return None
             return new_driver
-        except (NoSuchWindowException, WebDriverException):
-            logger.error("Browser window closed during driver initialization.")
-            return None
         except Exception as e:
             logger.exception(f"Unexpected error initializing ChromeDriver: {e}")
             return None
@@ -984,11 +1163,11 @@ class PixivDownloaderApp:
                     lambda d: d.find_elements(By.CSS_SELECTOR, "div[aria-label='Preview']") or 
                             d.find_elements(By.TAG_NAME, "img")
                 )
-                time.sleep(2)  # Extra delay for dynamic content
+                time.sleep(2)
                 page_source = driver.page_source
                 soup = BeautifulSoup(page_source, "html.parser")
 
-                page_count = 1  # Default
+                page_count = 1
                 if preview_div := soup.find("div", {"aria-label": "Preview"}):
                     spans = preview_div.find_all("span")
                     for span in spans:
@@ -1024,8 +1203,8 @@ class PixivDownloaderApp:
                 logger.info(f"Generated {len(image_urls)} image URLs for {artwork_url}")
                 return image_urls
 
-            except (TimeoutException, WebDriverException) as e:
-                if isinstance(e, NoSuchWindowException):
+            except (TimeoutException, WebDriverException, InvalidSessionIdException) as e:
+                if isinstance(e, InvalidSessionIdException) or isinstance(e, NoSuchWindowException):
                     logger.info(f"Stopping process for {artwork_url}: Browser window closed")
                     session_valid_ref[0] = False
                     return []
