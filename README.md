@@ -58,6 +58,7 @@ Love get_pixiv? Consider donating at [https://paypal.me/kakao90g](https://paypal
   - Added: Navigation keywords for Japanese site when user’s account language is Japanese.
   - Added: Support for Japanese URL structure (e.g., `https://www.pixiv.net/artworks/12345678`) in "Download URL".
   - Changed: UI text from "Artworks" to "Illustration and Manga" for consistency.
+  - Fixed: Detection for users with over 1000 artworks in "Download All".
 - **v1.03 (2025-04-02)**:
   - Added: "Verify Cookie" feature to accurately detect login state.
   - Removed: Cookie authentication on startup for simpler setup.
