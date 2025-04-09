@@ -25,7 +25,7 @@ import webbrowser
 import subprocess
 
 # Version constant
-VERSION = "1.03"
+VERSION = "1.04"
 
 # Suppress WebDriver Manager logs
 os.environ['WDM_LOG'] = '0'
@@ -165,7 +165,7 @@ class PixivDownloaderApp:
         download_frame = ttk.LabelFrame(self.root, text="Download Artworks")
         download_frame.pack(padx=10, pady=5, fill="x")
 
-        self.artwork_label = ttk.Label(download_frame, text="Artworks: 0")
+        self.artwork_label = ttk.Label(download_frame, text="Illustrations and Manga: 0")
         self.artwork_label.grid(row=0, column=0, columnspan=4, padx=5, pady=5)
 
         self.download_button = ttk.Button(download_frame, text="Download All", command=self.start_download, state="disabled", width=15)
@@ -367,7 +367,7 @@ class PixivDownloaderApp:
         self.download_url_button.config(state="disabled")
         self.user_id_entry.delete(0, tk.END)
         self.url_entry.delete(0, tk.END)
-        self.artwork_label.config(text="Artworks: 0")
+        self.artwork_label.config(text="Illustrations and Manga: 0")
         self.page_label.config(text="of 0 pages")
         self.page_combo.config(state="normal")
         self.page_combo.set("")
@@ -514,11 +514,16 @@ class PixivDownloaderApp:
                 EC.presence_of_element_located((By.TAG_NAME, "body"))
             )
             soup = BeautifulSoup(self.driver.page_source, "html.parser")
-            h2_tag = soup.find("h2", string="Illustrations and Manga")
-            if h2_tag and (span_tag := h2_tag.find_next("span")) and span_tag.text.isdigit():
-                self.target_count = int(span_tag.text)
-                logger.info(f"User found. Total artworks available: {self.target_count}")
-                self.artwork_label.config(text=f"Artworks: {self.target_count}")
+            h2_tag = soup.find("h2", string=["Illustrations and Manga", "イラスト・マンガ"])
+            if h2_tag and (span_tag := h2_tag.parent.find("span")) and span_tag.text:
+                count_text = span_tag.text.replace(",", "")
+                if count_text.isdigit():
+                    self.target_count = int(count_text)
+                    logger.info(f"User found. Total artworks available: {self.target_count}")
+                    self.artwork_label.config(text=f"Illustrations and Manga: {self.target_count}")
+                else:
+                    logger.error(f"Cannot parse artwork count: '{span_tag.text}' is not a valid number.")
+                    return
             else:
                 logger.error("Invalid User ID or no artworks found.")
                 return
@@ -629,8 +634,8 @@ class PixivDownloaderApp:
 
     def start_download_url(self):
         artwork_url = self.url_entry.get().strip()
-        if not artwork_url or not re.match(r"https://www\.pixiv.net/en/artworks/\d+", artwork_url):
-            logger.error("Invalid or empty artwork URL. Please enter a valid Pixiv artwork URL (e.g., https://www.pixiv.net/en/artworks/12345678).")
+        if not artwork_url or not re.match(r"https://www\.pixiv.net(/en)?/artworks/\d+", artwork_url):
+            logger.error("Invalid or empty artwork URL. Please enter a valid Pixiv artwork URL (e.g., https://www.pixiv.net/artworks/12345678 or https://www.pixiv.net/en/artworks/12345678).")
             self.download_url_button.config(state="normal")
             return
 
@@ -723,7 +728,7 @@ class PixivDownloaderApp:
 
                 soup = BeautifulSoup(self.driver.page_source, "html.parser")
                 page_linked = set()
-                for link in soup.find_all("a", href=re.compile(r"/en/artworks/\d+$")):
+                for link in soup.find_all("a", href=re.compile(r"(/en)?/artworks/\d+$")):
                     full_url = "https://www.pixiv.net" + link["href"]
                     if full_url not in artwork_links_seen:
                         page_linked.add(full_url)
@@ -920,7 +925,7 @@ class PixivDownloaderApp:
 
             soup = BeautifulSoup(self.driver.page_source, "html.parser")
             page_linked = set()
-            for link in soup.find_all("a", href=re.compile(r"/en/artworks/\d+$")):
+            for link in soup.find_all("a", href=re.compile(r"(/en)?/artworks/\d+$")):
                 full_url = "https://www.pixiv.net" + link["href"]
                 if full_url not in artwork_links_seen:
                     page_linked.add(full_url)
@@ -1160,7 +1165,7 @@ class PixivDownloaderApp:
             try:
                 driver.get(artwork_url)
                 WebDriverWait(driver, TIMEOUT).until(
-                    lambda d: d.find_elements(By.CSS_SELECTOR, "div[aria-label='Preview']") or 
+                    lambda d: d.find_elements(By.CSS_SELECTOR, "div[aria-label='Preview'], div[aria-label='プレビュー']") or 
                             d.find_elements(By.TAG_NAME, "img")
                 )
                 time.sleep(2)
@@ -1168,7 +1173,7 @@ class PixivDownloaderApp:
                 soup = BeautifulSoup(page_source, "html.parser")
 
                 page_count = 1
-                if preview_div := soup.find("div", {"aria-label": "Preview"}):
+                if preview_div := soup.find("div", {"aria-label": ["Preview", "プレビュー"]}):
                     spans = preview_div.find_all("span")
                     for span in spans:
                         if "/" in span.text:
