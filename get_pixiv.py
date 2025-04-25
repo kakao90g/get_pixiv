@@ -23,14 +23,16 @@ from requests.adapters import HTTPAdapter
 import threading
 import webbrowser
 import subprocess
+import math
+import re
 
 # Version constant
-VERSION = "1.04"
+VERSION = "1.05"
 
 # Suppress WebDriver Manager logs
 os.environ['WDM_LOG'] = '0'
 
-# Suppress urllib3 "Connection pool is full" INFO logs
+# Suppress urllib3 logs
 logging.getLogger("urllib3").setLevel(logging.WARNING)
 
 # Set up logging
@@ -516,24 +518,47 @@ class PixivDownloaderApp:
             soup = BeautifulSoup(self.driver.page_source, "html.parser")
             h2_tag = soup.find("h2", string=["Illustrations and Manga", "イラスト・マンガ"])
             if h2_tag and (span_tag := h2_tag.parent.find("span")) and span_tag.text:
-                count_text = span_tag.text.replace(",", "")
+                count_text = span_tag.text.replace(",", "").strip()
                 if count_text.isdigit():
                     self.target_count = int(count_text)
                     logger.info(f"User found. Total artworks available: {self.target_count}")
                     self.artwork_label.config(text=f"Illustrations and Manga: {self.target_count}")
                 else:
-                    logger.error(f"Cannot parse artwork count: '{span_tag.text}' is not a valid number.")
+                    logger.error(f"Cannot parse artwork count: '{count_text}' is not a valid number.")
+                    self.target_count = 0
+                    self.total_pages = 0
+                    self.artwork_label.config(text=f"Illustrations and Manga: 0")
+                    self.page_label.config(text="of 0 pages")
+                    self.page_combo.config(state="normal")
+                    self.page_combo["values"] = []
+                    self.page_combo.set("")
+                    self.fetch_complete = False
                     return
             else:
+                self.target_count = 0
+                self.total_pages = 0
                 logger.error("Invalid User ID or no artworks found.")
+                self.artwork_label.config(text=f"Illustrations and Manga: 0")
+                self.page_label.config(text="of 0 pages")
+                self.page_combo.config(state="normal")
+                self.page_combo["values"] = []
+                self.page_combo.set("")
+                self.fetch_complete = False
                 return
 
-            artworks_url = f"https://www.pixiv.net/en/users/{self.user_id}/artworks"
+            artworks_url = f"https://www.pixiv.net/en/users/{self.user_id}/artworks?p=1"
             self.driver.get(artworks_url)
             WebDriverWait(self.driver, TIMEOUT).until(EC.presence_of_element_located((By.XPATH, "//a[contains(@href, '/artworks/')]")))
-            logger.info("Checking for pages... Please wait.")
-            self.total_pages = self.get_total_pages()
-            logger.info(f"Found {self.total_pages} pages of artworks.")
+            self.driver.execute_script("window.scrollTo(0, document.body.scrollHeight);")
+            time.sleep(2)
+            soup = BeautifulSoup(self.driver.page_source, "html.parser")
+            artwork_links = soup.find_all("a", href=re.compile(r"(/en)?/artworks/\d+$"))
+            artwork_ids = set(re.search(r"/artworks/(\d+)$", link["href"]).group(1) for link in artwork_links)
+            artworks_per_page = len(artwork_ids)
+            logger.info(f"Page 1: Found {artworks_per_page} unique artworks")
+            self.total_pages = math.ceil(self.target_count / artworks_per_page) if artworks_per_page > 0 else 1
+            logger.info(f"Calculated {self.total_pages} pages of artworks.")
+
             self.page_label.config(text=f"of {self.total_pages} pages")
             self.page_combo.config(state="normal")
             self.page_combo["values"] = [str(i) for i in range(1, self.total_pages + 1)]
@@ -543,10 +568,24 @@ class PixivDownloaderApp:
             logger.error(f"Search interrupted: {str(e)}")
             error_occurred = True
             self.fetch_complete = False
+            self.target_count = 0
+            self.total_pages = 0
+            self.artwork_label.config(text=f"Illustrations and Manga: 0")
+            self.page_label.config(text="of 0 pages")
+            self.page_combo.config(state="normal")
+            self.page_combo["values"] = []
+            self.page_combo.set("")
         except Exception as e:
             logger.error(f"Unexpected error fetching artwork count or pages: {str(e)}")
             error_occurred = True
             self.fetch_complete = False
+            self.target_count = 0
+            self.total_pages = 0
+            self.artwork_label.config(text=f"Illustrations and Manga: 0")
+            self.page_label.config(text="of 0 pages")
+            self.page_combo.config(state="normal")
+            self.page_combo["values"] = []
+            self.page_combo.set("")
         finally:
             if self.driver and self.is_session_valid(self.driver):
                 if error_occurred or self.is_headless:
@@ -554,46 +593,8 @@ class PixivDownloaderApp:
                     self.driver = None
             self.search_button.config(state="normal")
             self.download_url_button.config(state="normal")
-            if self.fetch_complete:
-                self.download_button.config(state="normal")
-                self.download_page_button.config(state="normal")
-
-    def get_total_pages(self):
-        page_num = 1
-        while True:
-            self.driver.execute_script("window.scrollTo(0, document.body.scrollHeight);")
-            time.sleep(2)
-            try:
-                WebDriverWait(self.driver, TIMEOUT).until(
-                    EC.presence_of_element_located((By.XPATH, "//nav[contains(@class, 'sc-xhhh7v-0')]"))
-                )
-                broad_xpath = (
-                    "//a[.//svg[@viewBox='0 0 10 8' and @width='16' and @height='16']] | "
-                    "//a[contains(@href, '?p=" + str(page_num + 1) + "')]"
-                )
-                candidates = self.driver.find_elements(By.XPATH, broad_xpath)
-                if not candidates:
-                    break
-
-                next_button = None
-                for cand in candidates:
-                    href = cand.get_attribute("href")
-                    if href and f"?p={page_num + 1}" in href:
-                        next_button = cand
-                        break
-
-                if not next_button:
-                    break
-
-                self.driver.execute_script("arguments[0].scrollIntoView(true);", next_button)
-                time.sleep(1)
-                current_url = self.driver.current_url
-                next_button.click()
-                WebDriverWait(self.driver, TIMEOUT).until(lambda d: d.current_url != current_url)
-                page_num += 1
-            except (TimeoutException, WebDriverException):
-                break
-        return page_num
+            self.download_button.config(state="normal" if self.fetch_complete and self.target_count > 0 else "disabled")
+            self.download_page_button.config(state="normal" if self.fetch_complete and self.target_count > 0 else "disabled")
 
     def start_download(self):
         self.stop_download = False
@@ -683,34 +684,33 @@ class PixivDownloaderApp:
             return
         session_valid = [True]
         artwork_links_seen = set()
-        page_num = 1
         failed_urls = []
         failed_downloads = []
 
         try:
-            artworks_url = f"https://www.pixiv.net/en/users/{self.user_id}/artworks"
-            if not self.stop_download and session_valid[0]:
-                try:
-                    self.driver.get(artworks_url)
-                    WebDriverWait(self.driver, TIMEOUT).until(EC.presence_of_element_located((By.XPATH, "//a[contains(@href, '/artworks/')]")))
-                except (TimeoutException, WebDriverException, InvalidSessionIdException):
-                    logger.info(f"Stopping process on Page {page_num}: Browser window closed or timed out")
-                    session_valid[0] = False
-                    self.root.after(0, self.reset_ui)
-                    return
-                if self.stop_download:
-                    logger.info(f"Session interrupted. Stopping process on Page {page_num}.")
-                    self.root.after(0, self.reset_ui)
-                    return
+            artworks_url = f"https://www.pixiv.net/en/users/{self.user_id}/artworks?p=1"
+            self.driver.get(artworks_url)
+            WebDriverWait(self.driver, TIMEOUT).until(EC.presence_of_element_located((By.XPATH, "//a[contains(@href, '/artworks/')]")))
+            self.driver.execute_script("window.scrollTo(0, document.body.scrollHeight);")
+            time.sleep(2)
+            soup = BeautifulSoup(self.driver.page_source, "html.parser")
+            artwork_links = soup.find_all("a", href=re.compile(r"(/en)?/artworks/\d+$"))
+            artwork_ids = set(re.search(r"/artworks/(\d+)$", link["href"]).group(1) for link in artwork_links)
+            artworks_per_page = len(artwork_ids)
+            total_pages = math.ceil(self.target_count / artworks_per_page) if artworks_per_page > 0 else 1
+            logger.info(f"Calculated {total_pages} pages of artworks.")
 
-            while session_valid[0] and not self.stop_download:
-                page_url = f"{artworks_url}?p={page_num}"
+            page_num = 1
+            while page_num <= total_pages and session_valid[0] and not self.stop_download:
+                page_url = f"https://www.pixiv.net/en/users/{self.user_id}/artworks?p={page_num}"
                 if not self.is_session_valid(self.driver):
                     logger.info(f"Stopping process on Page {page_num}: Browser window closed")
                     break
                 try:
                     self.driver.get(page_url)
                     WebDriverWait(self.driver, TIMEOUT).until(EC.presence_of_element_located((By.XPATH, "//a[contains(@href, '/artworks/')]")))
+                    self.driver.execute_script("window.scrollTo(0, document.body.scrollHeight);")
+                    time.sleep(2)
                 except (TimeoutException, WebDriverException, InvalidSessionIdException):
                     logger.info(f"Stopping process on Page {page_num}: Browser window closed or timed out")
                     break
@@ -718,21 +718,15 @@ class PixivDownloaderApp:
                 if self.stop_download:
                     break
 
-                self.driver.execute_script("window.scrollTo(0, document.body.scrollHeight);")
-                time.sleep(2)
-                try:
-                    WebDriverWait(self.driver, TIMEOUT).until(EC.presence_of_element_located((By.XPATH, "//nav[contains(@class, 'sc-xhhh7v-0')]")))
-                except (TimeoutException, WebDriverException, InvalidSessionIdException):
-                    logger.info(f"Stopping process on Page {page_num}: Browser window closed or timed out")
-                    break
-
                 soup = BeautifulSoup(self.driver.page_source, "html.parser")
                 page_linked = set()
                 for link in soup.find_all("a", href=re.compile(r"(/en)?/artworks/\d+$")):
                     full_url = "https://www.pixiv.net" + link["href"]
-                    if full_url not in artwork_links_seen:
-                        page_linked.add(full_url)
-                        artwork_links_seen.add(full_url)
+                    artwork_id = re.search(r"/artworks/(\d+)$", link["href"]).group(1)
+                    full_url_normalized = f"https://www.pixiv.net/en/artworks/{artwork_id}"
+                    if full_url_normalized not in artwork_links_seen:
+                        page_linked.add(full_url_normalized)
+                        artwork_links_seen.add(full_url_normalized)
                 logger.info(f"Page {page_num}: Found {len(page_linked)} new artworks (Total so far: {len(artwork_links_seen)})")
 
                 page_progress = 0
@@ -802,64 +796,7 @@ class PixivDownloaderApp:
                     self.progress_bar["value"] = (self.processed_count / self.target_count) * 100
                     self.root.update_idletasks()
 
-                if not session_valid[0] or self.stop_download:
-                    break
-
-                logger.info(f"Returning to artworks list: {page_url}")
-                if not self.is_session_valid(self.driver):
-                    logger.info(f"Stopping process on Page {page_num}: Browser window closed")
-                    break
-                try:
-                    self.driver.get(page_url)
-                    WebDriverWait(self.driver, TIMEOUT).until(EC.presence_of_element_located((By.XPATH, "//a[contains(@href, '/artworks/')]")))
-                    self.driver.execute_script("window.scrollTo(0, document.body.scrollHeight);")
-                    time.sleep(2)
-                    WebDriverWait(self.driver, TIMEOUT).until(EC.presence_of_element_located((By.XPATH, "//nav[contains(@class, 'sc-xhhh7v-0')]")))
-                except (TimeoutException, WebDriverException, InvalidSessionIdException):
-                    logger.info(f"Stopping process on Page {page_num}: Browser window closed or timed out")
-                    break
-
-                next_found = False
-                for attempt in range(3):
-                    if self.stop_download:
-                        break
-                    try:
-                        broad_xpath = (
-                            "//a[.//svg[@viewBox='0 0 10 8' and @width='16' and @height='16']] | "
-                            "//a[contains(@href, '?p=" + str(page_num + 1) + "')]"
-                        )
-                        candidates = self.driver.find_elements(By.XPATH, broad_xpath)
-                        if not candidates:
-                            raise TimeoutException("No candidates found")
-
-                        next_button = None
-                        for cand in candidates:
-                            href = cand.get_attribute("href")
-                            if href and f"?p={page_num + 1}" in href:
-                                next_button = cand
-                                break
-
-                        if not next_button:
-                            raise TimeoutException("No suitable 'Next' button found")
-
-                        self.driver.execute_script("arguments[0].scrollIntoView(true);", next_button)
-                        time.sleep(1)
-                        current_url = self.driver.current_url
-                        next_button.click()
-                        WebDriverWait(self.driver, TIMEOUT).until(lambda d: d.current_url != current_url)
-                        page_num += 1
-                        next_found = True
-                        logger.info(f"Found 'Next' button on Page {page_num - 1}, proceeding.")
-                        time.sleep(random.uniform(2, 4))
-                        break
-                    except (TimeoutException, WebDriverException, InvalidSessionIdException):
-                        if attempt == 2:
-                            logger.info(f"No 'Next' button found on Page {page_num}. End of pagination.")
-                            next_found = False
-                        time.sleep(random.uniform(1, 3))
-
-                if not next_found:
-                    break
+                page_num += 1
 
         except Exception as e:
             logger.error(f"Unexpected error in download_all: {str(e)}")
@@ -917,19 +854,15 @@ class PixivDownloaderApp:
 
             self.driver.execute_script("window.scrollTo(0, document.body.scrollHeight);")
             time.sleep(2)
-            try:
-                WebDriverWait(self.driver, TIMEOUT).until(EC.presence_of_element_located((By.XPATH, "//nav[contains(@class, 'sc-xhhh7v-0')]")))
-            except (TimeoutException, WebDriverException, InvalidSessionIdException):
-                logger.info(f"Stopping process on Page {page_num}: Browser window closed or timed out")
-                return
-
             soup = BeautifulSoup(self.driver.page_source, "html.parser")
             page_linked = set()
             for link in soup.find_all("a", href=re.compile(r"(/en)?/artworks/\d+$")):
                 full_url = "https://www.pixiv.net" + link["href"]
-                if full_url not in artwork_links_seen:
-                    page_linked.add(full_url)
-                    artwork_links_seen.add(full_url)
+                artwork_id = re.search(r"/artworks/(\d+)$", link["href"]).group(1)
+                full_url_normalized = f"https://www.pixiv.net/en/artworks/{artwork_id}"
+                if full_url_normalized not in artwork_links_seen:
+                    page_linked.add(full_url_normalized)
+                    artwork_links_seen.add(full_url_normalized)
             logger.info(f"Page {page_num}: Found {len(page_linked)} new artworks (Total so far: {len(artwork_links_seen)})")
 
             page_progress = 0

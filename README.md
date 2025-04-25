@@ -1,5 +1,5 @@
 # get_pixiv
-A Python-based Pixiv artwork downloader (v1.04). Search by user ID or artwork URL to grab all images, specific pages, or single artworks with ease.
+A Python-based Pixiv artwork downloader (v1.05). Search by user ID or artwork URL to grab all images, specific pages, or single artworks with ease.
 
 ## Requirements
 1. **Install Python**: Get it from [python.org](https://www.python.org/) and check "Add to PATH" during installation.
@@ -54,6 +54,10 @@ For users who just want to download artworks without any setup.
 Love get_pixiv? Consider donating at [https://paypal.me/kakao90g](https://paypal.me/kakao90g) to keep this project alive—please don’t remove this link!
 
 ## Changelog
+- **v1.05 (2025-04-25)**:
+  - Fixed: Critical navigation failure by removing reliance on dynamic nav class.
+  - Added: Pagination navigation logic using basic calculation and detection.
+  - Fixed: UI interaction for invalid user searches or no artworks found.
 - **v1.04 (2025-04-10)**:
   - Added: Navigation keywords for Japanese site when user’s account language is Japanese.
   - Added: Support for Japanese URL structure (e.g., `https://www.pixiv.net/artworks/12345678`) in "Download URL".
